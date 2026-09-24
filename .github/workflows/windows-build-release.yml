@@ -18,8 +18,9 @@ env:
   BUILD_DIR: ${{ github.workspace }}/bin/builddir
   BOOST_TOOLSET: "msvc"
   BOOST_VERSION: "1.78.0"
-  # 依赖来源仓库: 已镜像到本仓库(callmefree/UniverseEmu)的 UniverseSoftware Release, 实现自托管
-  DEPS_REPO: "callmefree/UniverseEmu"
+  # 依赖来源仓库: 上游(已确认存活)。本环境代理无法搬运大文件做镜像, 故构建由 GitHub runner 直连此 CDN 下载。
+  # 如需自托管, 请在本机(经 mihomo 代理可访问 GitHub)运行 scripts/mirror_deps_run.sh 后再改回 "callmefree/UniverseEmu"。
+  DEPS_REPO: "AzerothUniverseCore/UniverseEmu"
 
 jobs:
   build:
