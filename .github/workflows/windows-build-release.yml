@@ -50,7 +50,7 @@ jobs:
       - name: Install CMake 3.27.8
         shell: powershell
         run: |
-          $url  = "https://github.com/${{ env.DEPS_REPO }}/UniverseEmu/releases/download/UniverseSoftware/cmake-3.27.8-windows-x86_64.msi"
+          $url  = "https://github.com/${{ env.DEPS_REPO }}/releases/download/UniverseSoftware/cmake-3.27.8-windows-x86_64.msi"
           $dest = "$env:TEMP\cmake-3.27.8-windows-x86_64.msi"
           Write-Host "Downloading CMake 3.27.8..."
           Invoke-WebRequest -Uri $url -OutFile $dest
@@ -68,7 +68,7 @@ jobs:
       - name: Install Boost 1.78.0
         shell: powershell
         run: |
-          $url  = "https://github.com/${{ env.DEPS_REPO }}/UniverseEmu/releases/download/UniverseSoftware/boost_1_78_0-msvc-14.3-64.exe"
+          $url  = "https://github.com/${{ env.DEPS_REPO }}/releases/download/UniverseSoftware/boost_1_78_0-msvc-14.3-64.exe"
           $dest = "$env:TEMP\boost_1_78_0-msvc-14.3-64.exe"
           Write-Host "Downloading Boost 1.78.0..."
           Invoke-WebRequest -Uri $url -OutFile $dest
@@ -81,7 +81,7 @@ jobs:
       - name: Install MariaDB 10.5.8
         shell: powershell
         run: |
-          $url  = "https://github.com/${{ env.DEPS_REPO }}/UniverseEmu/releases/download/UniverseSoftware/mariadb-10.5.8-winx64.msi"
+          $url  = "https://github.com/${{ env.DEPS_REPO }}/releases/download/UniverseSoftware/mariadb-10.5.8-winx64.msi"
           $dest = "$env:TEMP\mariadb-10.5.8-winx64.msi"
           Write-Host "Downloading MariaDB 10.5.8..."
           Invoke-WebRequest -Uri $url -OutFile $dest
@@ -111,7 +111,7 @@ jobs:
       - name: Install OpenSSL 3.5.7
         shell: powershell
         run: |
-          $url  = "https://github.com/${{ env.DEPS_REPO }}/UniverseEmu/releases/download/UniverseSoftware/Win64OpenSSL-3_5_7.msi"
+          $url  = "https://github.com/${{ env.DEPS_REPO }}/releases/download/UniverseSoftware/Win64OpenSSL-3_5_7.msi"
           $dest = "$env:TEMP\Win64OpenSSL-3_5_7.msi"
           Write-Host "Downloading OpenSSL 3.5.7..."
           Invoke-WebRequest -Uri $url -OutFile $dest
