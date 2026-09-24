@@ -1,6 +1,7 @@
 name: Windows Build Release
 
 on:
+  workflow_dispatch:      # 新增：允许在 Actions 页面手动 "Run workflow" 触发编译
   push:
     branches:
       - main
@@ -17,6 +18,8 @@ env:
   BUILD_DIR: ${{ github.workspace }}/bin/builddir
   BOOST_TOOLSET: "msvc"
   BOOST_VERSION: "1.78.0"
+  # 依赖来源仓库: 已镜像到本仓库(callmefree/UniverseEmu)的 UniverseSoftware Release, 实现自托管
+  DEPS_REPO: "callmefree/UniverseEmu"
 
 jobs:
   build:
@@ -46,7 +49,7 @@ jobs:
       - name: Install CMake 3.27.8
         shell: powershell
         run: |
-          $url  = "https://github.com/AzerothUniverseCore/UniverseEmu/releases/download/UniverseSoftware/cmake-3.27.8-windows-x86_64.msi"
+          $url  = "https://github.com/${{ env.DEPS_REPO }}/UniverseEmu/releases/download/UniverseSoftware/cmake-3.27.8-windows-x86_64.msi"
           $dest = "$env:TEMP\cmake-3.27.8-windows-x86_64.msi"
           Write-Host "Downloading CMake 3.27.8..."
           Invoke-WebRequest -Uri $url -OutFile $dest
@@ -61,18 +64,14 @@ jobs:
         run: cmake --version
 
       # ── 4. Installer Boost 1.78.0 ────────────────────────────────────────────
-      # IMPORTANT: on n'utilise PAS MarkusJx/install-boost car il télécharge
-      # depuis un CDN tiers. On installe depuis notre propre release avec l'exe
-      # officiel Boost pour MSVC 14.3 (VS2022).
       - name: Install Boost 1.78.0
         shell: powershell
         run: |
-          $url  = "https://github.com/AzerothUniverseCore/UniverseEmu/releases/download/UniverseSoftware/boost_1_78_0-msvc-14.3-64.exe"
+          $url  = "https://github.com/${{ env.DEPS_REPO }}/UniverseEmu/releases/download/UniverseSoftware/boost_1_78_0-msvc-14.3-64.exe"
           $dest = "$env:TEMP\boost_1_78_0-msvc-14.3-64.exe"
           Write-Host "Downloading Boost 1.78.0..."
           Invoke-WebRequest -Uri $url -OutFile $dest
           Write-Host "Installing Boost 1.78.0..."
-          # Installation silencieuse dans C:\Boost
           Start-Process $dest -ArgumentList "/SILENT", "/SP-", "/DIR=C:\Boost" -Wait -NoNewWindow
           echo "BOOST_ROOT=C:\Boost" >> $env:GITHUB_ENV
           Write-Host "Boost 1.78.0 installed at C:\Boost"
@@ -81,42 +80,27 @@ jobs:
       - name: Install MariaDB 10.5.8
         shell: powershell
         run: |
-          $url  = "https://github.com/AzerothUniverseCore/UniverseEmu/releases/download/UniverseSoftware/mariadb-10.5.8-winx64.msi"
+          $url  = "https://github.com/${{ env.DEPS_REPO }}/UniverseEmu/releases/download/UniverseSoftware/mariadb-10.5.8-winx64.msi"
           $dest = "$env:TEMP\mariadb-10.5.8-winx64.msi"
           Write-Host "Downloading MariaDB 10.5.8..."
           Invoke-WebRequest -Uri $url -OutFile $dest
           Write-Host "Installing MariaDB 10.5.8..."
           Start-Process msiexec.exe -ArgumentList "/i `"$dest`" /quiet /norestart ADDLOCAL=ALL" -Wait -NoNewWindow
 
-          # ── Détection du chemin réel ────────────────────────────────────────
-          # On lit directement la clé de registre que FindMySQL.cmake (SyphrenaCore)
-          # utilise elle-même en fallback, pour être certain que MYSQL_ROOT
-          # pointe exactement là où CMake ira chercher.
           $regKeys = @(
             "HKLM:\SOFTWARE\MariaDB 10.5 (x64)",
             "HKLM:\SOFTWARE\MariaDB 10.5",
             "HKLM:\SOFTWARE\WOW6432Node\MariaDB 10.5 (x64)",
             "HKLM:\SOFTWARE\WOW6432Node\MariaDB 10.5"
           )
-
           $mysqlRoot = $null
           foreach ($key in $regKeys) {
             try {
               $val = (Get-ItemProperty -Path $key -Name INSTALLDIR -ErrorAction Stop).INSTALLDIR
-              if ($val) {
-                $mysqlRoot = $val.TrimEnd('\')
-                Write-Host "MariaDB trouve via registre ($key): $mysqlRoot"
-                break
-              }
+              if ($val) { $mysqlRoot = $val.TrimEnd('\'); Write-Host "MariaDB trouve via registre ($key): $mysqlRoot"; break }
             } catch {}
           }
-
-          if (-not $mysqlRoot) {
-            # Fallback : chemin par defaut de l'installeur MariaDB
-            $mysqlRoot = "C:\Program Files\MariaDB 10.5"
-            Write-Warning "Cle de registre introuvable, fallback sur $mysqlRoot"
-          }
-
+          if (-not $mysqlRoot) { $mysqlRoot = "C:\Program Files\MariaDB 10.5"; Write-Warning "Cle de registre introuvable, fallback sur $mysqlRoot" }
           Write-Host "MariaDB root: $mysqlRoot"
           echo "MYSQL_ROOT=$mysqlRoot" >> $env:GITHUB_ENV
           echo "$mysqlRoot\bin" >> $env:GITHUB_PATH
@@ -126,23 +110,16 @@ jobs:
       - name: Install OpenSSL 3.5.7
         shell: powershell
         run: |
-          $url  = "https://github.com/AzerothUniverseCore/UniverseEmu/releases/download/UniverseSoftware/Win64OpenSSL-3_5_7.msi"
+          $url  = "https://github.com/${{ env.DEPS_REPO }}/UniverseEmu/releases/download/UniverseSoftware/Win64OpenSSL-3_5_7.msi"
           $dest = "$env:TEMP\Win64OpenSSL-3_5_7.msi"
           Write-Host "Downloading OpenSSL 3.5.7..."
           Invoke-WebRequest -Uri $url -OutFile $dest
           Write-Host "Installing OpenSSL 3.5.7..."
           Start-Process msiexec.exe -ArgumentList "/i `"$dest`" /quiet /norestart" -Wait -NoNewWindow
-          Write-Host "OpenSSL 3.5.7 installed."
-
-          # Détecter le chemin réel via le registre
           $regPath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"
           $installed = Get-ChildItem $regPath | Get-ItemProperty | Where-Object { $_.DisplayName -like "*OpenSSL*" }
-          if ($installed) {
-            $opensslRoot = $installed.InstallLocation.TrimEnd('\')
-            Write-Host "OpenSSL found in registry: $opensslRoot"
-          } else {
-            $opensslRoot = "C:\Program Files\OpenSSL-Win64"
-          }
+          if ($installed) { $opensslRoot = $installed.InstallLocation.TrimEnd('\'); Write-Host "OpenSSL found in registry: $opensslRoot" }
+          else { $opensslRoot = "C:\Program Files\OpenSSL-Win64" }
           echo "OPENSSL_ROOT=$opensslRoot" >> $env:GITHUB_ENV
           Write-Host "OpenSSL root: $opensslRoot"
 
@@ -150,19 +127,9 @@ jobs:
       - name: Verify dependencies
         shell: powershell
         run: |
-          Write-Host "=== Boost ==="
-          Write-Host "BOOST_ROOT: $env:BOOST_ROOT"
-          Test-Path "$env:BOOST_ROOT\include" | Write-Host
-
-          Write-Host "=== MariaDB ==="
-          Write-Host "MYSQL_ROOT: $env:MYSQL_ROOT"
-          Test-Path "$env:MYSQL_ROOT\include\mysql\mysql.h" | Write-Host
-          Test-Path "$env:MYSQL_ROOT\lib\libmariadb.lib" | Write-Host
-
-          Write-Host "=== OpenSSL ==="
-          Write-Host "OPENSSL_ROOT: $env:OPENSSL_ROOT"
-          Test-Path "$env:OPENSSL_ROOT\include\openssl\ssl.h" | Write-Host
-          Test-Path "$env:OPENSSL_ROOT\lib\VC\x64\MD\libcrypto.lib" | Write-Host
+          Write-Host "=== Boost ==="; Write-Host "BOOST_ROOT: $env:BOOST_ROOT"; Test-Path "$env:BOOST_ROOT\include" | Write-Host
+          Write-Host "=== MariaDB ==="; Write-Host "MYSQL_ROOT: $env:MYSQL_ROOT"; Test-Path "$env:MYSQL_ROOT\include\mysql\mysql.h" | Write-Host; Test-Path "$env:MYSQL_ROOT\lib\libmariadb.lib" | Write-Host
+          Write-Host "=== OpenSSL ==="; Write-Host "OPENSSL_ROOT: $env:OPENSSL_ROOT"; Test-Path "$env:OPENSSL_ROOT\include\openssl\ssl.h" | Write-Host; Test-Path "$env:OPENSSL_ROOT\lib\VC\x64\MD\libcrypto.lib" | Write-Host
 
       # ── 8. Configure (CMake) ─────────────────────────────────────────────────
       - name: Configure with CMake
@@ -171,25 +138,14 @@ jobs:
           $mysqlRoot   = $env:MYSQL_ROOT
           $opensslRoot = $env:OPENSSL_ROOT
           $boostRoot   = $env:BOOST_ROOT
-
-          Write-Host "MySQL root   : $mysqlRoot"
-          Write-Host "OpenSSL root : $opensslRoot"
-          Write-Host "Boost root   : $boostRoot"
-
           cd "${{ env.BUILD_DIR }}"
           cmake "${{ env.REPO_DIR }}" `
             -A x64 `
             -DCMAKE_BUILD_TYPE="${{ env.BUILD_TYPE }}" `
-            -DTOOLS=ON `
-            -DSCRIPTS=dynamic `
-            -DSERVERS=1 `
-            -DUSE_COREPCH=1 `
-            -DUSE_SCRIPTPCH=1 `
-            -DNOJEM=0 `
-            -DWITH_WARNINGS=0 `
-            -DWITH_COREDEBUG=0 `
-            -DMYSQL_ROOT_DIR="$mysqlRoot" `
-            -DOPENSSL_ROOT_DIR="$opensslRoot" `
+            -DTOOLS=ON -DSCRIPTS=dynamic -DSERVERS=1 `
+            -DUSE_COREPCH=1 -DUSE_SCRIPTPCH=1 -DNOJEM=0 `
+            -DWITH_WARNINGS=0 -DWITH_COREDEBUG=0 `
+            -DMYSQL_ROOT_DIR="$mysqlRoot" -DOPENSSL_ROOT_DIR="$opensslRoot" `
             -DBOOST_ROOT="$boostRoot" `
             -DCMAKE_INSTALL_PREFIX="${{ env.BUILD_DIR }}/install"
 
@@ -197,101 +153,48 @@ jobs:
       - name: Build
         shell: powershell
         run: |
-          cmake --build "${{ env.BUILD_DIR }}" `
-            --config ${{ env.BUILD_TYPE }} `
-            --parallel 4
+          cmake --build "${{ env.BUILD_DIR }}" --config ${{ env.BUILD_TYPE }} --parallel 4
 
       # ── 10. Copier les DLL runtime ────────────────────────────────────────────
       - name: Copy runtime DLLs
         shell: powershell
         run: |
           $binDir = "${{ env.BUILD_DIR }}\bin\${{ env.BUILD_TYPE }}"
-
-          # ── MariaDB DLL ────────────────────────────────────────────────────
-          # Les exe compilés (authserver.exe/worldserver.exe) demandent
-          # explicitement "libmysql.dll" au chargement (table d'imports),
-          # même si on a linké contre libmariadb.lib. On copie donc le fichier
-          # réel de MariaDB mais renommé en libmysql.dll pour que Windows le
-          # trouve au runtime.
           $mysqlLib = "$env:MYSQL_ROOT\lib\libmariadb.dll"
-          Write-Host "Copying MariaDB DLL from $mysqlLib as libmysql.dll..."
           Copy-Item $mysqlLib "$binDir\libmysql.dll" -Force
-          # On garde aussi une copie sous son nom d'origine, au cas où.
           Copy-Item $mysqlLib "$binDir\libmariadb.dll" -Force
-
-          # ── OpenSSL DLLs ───────────────────────────────────────────────────
-          # Chercher libcrypto et libssl directement dans tous les dossiers
-          # OpenSSL possibles (le registre peut avoir un chemin avec espace parasite)
-          $opensslSearchPaths = @(
-            "$env:OPENSSL_ROOT\bin",
-            "C:\Program Files\OpenSSL-Win64\bin",
-            "C:\Program Files\OpenSSL\bin",
-            "C:\OpenSSL-Win64\bin",
-            "C:\OpenSSL\bin"
-          )
-
-          $cryptoDll = $null
-          $sslDll    = $null
-          $legacyDll = $null
+          $opensslSearchPaths = @("$env:OPENSSL_ROOT\bin","C:\Program Files\OpenSSL-Win64\bin","C:\Program Files\OpenSSL\bin","C:\OpenSSL-Win64\bin","C:\OpenSSL\bin")
+          $cryptoDll=$null;$sslDll=$null;$legacyDll=$null
           foreach ($path in $opensslSearchPaths) {
-            $path = $path.Trim()
-            Write-Host "Checking OpenSSL path: '$path'"
-            if (Test-Path "$path\libcrypto-3-x64.dll") {
-              $cryptoDll = "$path\libcrypto-3-x64.dll"
-              $sslDll    = "$path\libssl-3-x64.dll"
-              $legacyDll = "$path\legacy.dll"
-              Write-Host "Found OpenSSL DLLs at: $path"
-              break
-            }
+            $path=$path.Trim()
+            if (Test-Path "$path\libcrypto-3-x64.dll") { $cryptoDll="$path\libcrypto-3-x64.dll"; $sslDll="$path\libssl-3-x64.dll"; $legacyDll="$path\legacy.dll"; Write-Host "Found OpenSSL DLLs at: $path"; break }
           }
-
-          # Fallback : scan global si aucun chemin statique ne fonctionne
           if (-not $cryptoDll) {
-            Write-Host "Static paths failed, scanning C:\Program Files for OpenSSL DLLs..."
             $found = Get-ChildItem "C:\Program Files" -Recurse -Filter "libcrypto-3-x64.dll" -ErrorAction SilentlyContinue | Select-Object -First 1
-            if ($found) {
-              $cryptoDll = $found.FullName
-              $sslDll    = Join-Path $found.DirectoryName "libssl-3-x64.dll"
-              $legacyDll = Join-Path $found.DirectoryName "legacy.dll"
-              Write-Host "Found via scan: $cryptoDll"
-            }
+            if ($found) { $cryptoDll=$found.FullName; $sslDll=Join-Path $found.DirectoryName "libssl-3-x64.dll"; $legacyDll=Join-Path $found.DirectoryName "legacy.dll" }
           }
-
-          if (-not $cryptoDll) {
-            Write-Error "Could not find libcrypto-3-x64.dll anywhere!"
-            exit 1
-          }
-
+          if (-not $cryptoDll) { Write-Error "Could not find libcrypto-3-x64.dll anywhere!"; exit 1 }
           Copy-Item $cryptoDll "$binDir\libcrypto-3-x64.dll" -Force
           Copy-Item $sslDll    "$binDir\libssl-3-x64.dll"    -Force
           Copy-Item $legacyDll "$binDir\legacy.dll" -Force
-
           Write-Host "All DLLs copied successfully."
 
-      # ── 11. Vérifier les binaires ─────────────────────────────────────────────
-      # Ce step est purement informatif : il ne conditionne pas la suite du
-      # pipeline (zip + release). On affiche le résultat sans faire échouer
-      # le job, car un DLL manquant ici (STATUS_DLL_NOT_FOUND / 0xC0000135)
-      # est un signal utile à surveiller mais ne doit pas bloquer la release.
+      # ── 11. Vérifier les binaires (fail build on broken binary) ──────────────
       - name: Check binaries
         shell: powershell
-        continue-on-error: true
         run: |
+          $ErrorActionPreference = 'Stop'
           $binDir = "${{ env.BUILD_DIR }}/bin/${{ env.BUILD_TYPE }}"
           Get-ChildItem $binDir
-
           Copy-Item "$binDir\authserver.conf.dist"  "$binDir\authserver.conf"  -Force
           Copy-Item "$binDir\worldserver.conf.dist" "$binDir\worldserver.conf" -Force
-
           Write-Host "=== authserver.exe --version ==="
           & "$binDir/authserver.exe" --version
-          Write-Host "Exit code: $LASTEXITCODE"
-
+          if ($LASTEXITCODE -ne 0) { throw "authserver.exe failed version check (missing VC++ runtime on runner?)" }
           Write-Host "=== worldserver.exe --version ==="
           & "$binDir/worldserver.exe" --version
-          Write-Host "Exit code: $LASTEXITCODE"
-
-          exit 0
+          if ($LASTEXITCODE -ne 0) { throw "worldserver.exe failed version check (missing VC++ runtime on runner?)" }
+          Write-Host "Binary version checks passed."
 
       # ── 12. Upload artifact ───────────────────────────────────────────────────
       - name: Upload Artifacts
@@ -308,7 +211,6 @@ jobs:
           $binDir  = "${{ env.BUILD_DIR }}\bin\${{ env.BUILD_TYPE }}"
           $zipName = "AzerothUniverseCore-Win64-$env:CI_SHA_SHORT.zip"
           $zipPath = "${{ env.BUILD_DIR }}\$zipName"
-          Write-Host "Creating archive $zipName..."
           Compress-Archive -Path "$binDir\*" -DestinationPath $zipPath -Force
           echo "RELEASE_ZIP=$zipPath" >> $env:GITHUB_ENV
           Write-Host "Archive created: $zipPath"
